@@ -34,8 +34,38 @@ function errText(err) {
   if (/at least 6/i.test(m)) return "Salasanan pitää olla vähintään 6 merkkiä.";
   if (/Email not confirmed/i.test(m)) return "Vahvista ensin sähköpostiosoite sähköpostiin tulleesta linkistä.";
   if (/fetch|network/i.test(m)) return "Ei yhteyttä palvelimeen. Tarkista verkkoyhteys.";
+  if (/bucket not found|photo_path|row-level security/i.test(m)) return "Kuvien tallennusta ei ole vielä otettu käyttöön tietokannassa (aja kuvien SQL-koodi Supabasessa).";
+  if (/kuva/i.test(m)) return m;
   return "Jokin meni pieleen: " + m;
 }
+
+/* ---------- kuvat ---------- */
+// Pienentää kuvan pitkältä sivultaan enintään 1600 px:n JPEGiksi, jotta lataus on nopea myös mobiiliverkossa.
+async function resizeImage(file, max = 1600) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error("Kuvaa ei voitu avata. Kokeile toista kuvaa.")); i.src = url; });
+    const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+    const cv = Object.assign(document.createElement("canvas"), { width: Math.round(img.naturalWidth * k), height: Math.round(img.naturalHeight * k) });
+    cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+    return await new Promise((ok, no) => cv.toBlob(b => b ? ok(b) : no(new Error("Kuvan käsittely epäonnistui.")), "image/jpeg", 0.82));
+  } finally { URL.revokeObjectURL(url); }
+}
+const CAR_SVG = `<svg viewBox="0 0 240 110" aria-hidden="true"><path d="M18 78c0-9 5-14 14-16l30-7 26-21c6-5 12-7 20-7h50c9 0 15 3 21 9l20 19 18 4c8 2 13 8 13 16v9c0 4-3 6-6 6h-14a24 24 0 0 0-47 0H82a24 24 0 0 0-47 0H24c-4 0-6-2-6-6z" fill="currentColor" opacity=".9"/><circle cx="58" cy="86" r="17" fill="currentColor"/><circle cx="183" cy="86" r="17" fill="currentColor"/><circle cx="58" cy="86" r="7" fill="var(--track)"/><circle cx="183" cy="86" r="7" fill="var(--track)"/><path d="M98 33h34v22H74zM142 33h22c5 0 9 2 12 5l15 17h-49z" fill="var(--track)"/></svg>`;
+function carPhoto(c, cls) {
+  return c.photoUrl
+    ? `<div class="photo ${cls}"><img src="${esc(c.photoUrl)}" alt="${esc(carTitle(c))}" loading="lazy"></div>`
+    : `<div class="photo ${cls} placeholder">${CAR_SVG}</div>`;
+}
+const fileInput = Object.assign(document.createElement("input"), { type: "file", accept: "image/*", hidden: true });
+document.body.append(fileInput);
+fileInput.onchange = async () => {
+  const f = fileInput.files[0]; fileInput.value = "";
+  const c = state.cars.find(x => x.id === state.carId); if (!f || !c) return;
+  const st = $("#photoStatus"); if (st) st.textContent = "Tallennetaan kuvaa…";
+  try { await store.setPhoto(c, await resizeImage(f)); await reload(); }
+  catch (err) { const s = $("#photoStatus"); if (s) s.textContent = errText(err); }
+};
 
 /* ---------- näkymät ---------- */
 function odo(km) {
@@ -99,6 +129,7 @@ function renderList() {
       <button class="btn-primary" data-act="newcar">+ Lisää auto</button></div>
     ${state.cars.length ? `<div class="cards">${cars.map(c => `
       <article class="card" tabindex="0" role="button" data-open="${c.id}" aria-label="Avaa ${esc(carTitle(c))}">
+        ${carPhoto(c, "card-photo")}
         <div class="card-top"><div><h3>${esc(carTitle(c))}</h3>
           <div class="sub">${[c.year, c.fuel, c.engine].filter(Boolean).map(esc).join(" · ") || "&nbsp;"}</div></div>${plate(c.plate)}</div>
         <div>${odo(curKm(c))}</div>
@@ -118,8 +149,12 @@ function renderCar() {
     ["Moottoriöljy", c.oilSpec], ["Öljynvaihtoväli", c.fuel === "Sähkö" ? "" : `${fmtKm(c.oilKm || 15000)} km${c.oilMonths ? " tai " + c.oilMonths + " kk" : ""}`],
     ["Renkaat", c.tires], ["VIN", c.vin], ["Huollot yhteensä", total ? fmtEur(total) : ""]].filter(f => f[1]);
   const conf = state.confirm;
+  queueMicrotask(() => { state.photoMsg = null; });
   $("#view").innerHTML = `<div class="stack" style="gap:18px">
     <button class="btn-ghost back" data-act="back">← Kaikki autot</button>
+    <div class="stack" style="gap:8px">${carPhoto(c, "hero-photo")}
+      <div class="row"><button class="small" data-act="photo">${c.photoUrl ? "Vaihda kuva" : "Lisää kuva"}</button>
+      ${c.photoUrl ? `<button class="small btn-ghost" data-act="rmphoto">Poista kuva</button>` : ""}<span class="note" id="photoStatus" role="status">${esc(state.photoMsg || "")}</span></div></div>
     <div class="detail-head"><div><div class="eyebrow">${esc([c.year, c.fuel].filter(Boolean).join(" · ")) || "Auto"}</div>
       <h2 style="font-size:1.9rem">${esc(carTitle(c))}</h2></div>
       <div class="row">${plate(c.plate)}${odo(curKm(c))}</div></div>
@@ -194,6 +229,7 @@ function renderSheet() {
       ${s.edit ? "" : `<div class="group-title">Edellinen öljynvaihto (vapaaehtoinen)</div>
       <label>Mittarilukema (km)<input id="fLastKm" class="num" inputmode="numeric"></label>
       <label>Päivämäärä<input id="fLastDate" type="date"></label>`}
+      ${s.edit ? "" : `<label class="full">Kuva autosta (vapaaehtoinen)<input id="fPhoto" type="file" accept="image/*"></label>`}
       <label class="full">Muistiinpanot<textarea id="fNotes" rows="2">${esc(x.notes)}</textarea></label></div>`;
   } else if (s.type === "km") {
     body = `<h2>Päivitä mittarilukema</h2><p class="muted">${esc(carTitle(c))}, nyt ${fmtKm(curKm(c)) || "–"} km</p><div class="grid">
@@ -232,8 +268,14 @@ async function submitSheet(ev) {
       const car = { ...(s.edit ? state.cars.find(x => x.id === state.carId) : {}),
         make, model, plate: val("#fPlate").toUpperCase(), year: val("#fYear"), fuel: $("#fFuel").value, engine: val("#fEngine"),
         oilSpec: val("#fOilSpec"), tires: val("#fTires"), vin: val("#fVin").toUpperCase(), oilKm, oilMonths: +$("#fOilMonths").value, notes: val("#fNotes") };
+      delete car.photoUrl;
       const id = await store.saveCar(car);
       if (!s.edit) {
+        const photo = $("#fPhoto")?.files?.[0];
+        if (photo) {
+          try { await store.setPhoto({ id }, await resizeImage(photo)); }
+          catch (err) { state.photoMsg = "Auto tallennettiin, mutta kuva ei: " + errText(err); }
+        }
         const km = num(val("#fKm"));
         if (km != null) await store.addReading(id, todayISO(), km);
         const lk = num(val("#fLastKm")), ld = val("#fLastDate");
@@ -277,7 +319,9 @@ document.addEventListener("click", async e => {
     else if (a === "back") { state.view = "list"; state.carId = null; state.sheet = null; state.confirm = null; render(); }
     else if (a === "nodel") { state.confirm = null; render(); }
     else if (a === "askcar") { state.confirm = "car"; render(); }
-    else if (a === "delcar") { const id = state.carId; state.view = "list"; state.carId = null; state.confirm = null; await store.deleteCar(id); await reload(); }
+    else if (a === "delcar") { const id = state.carId, pp = state.cars.find(x => x.id === id)?.photoPath; state.view = "list"; state.carId = null; state.confirm = null; await store.deleteCar(id, pp); await reload(); }
+    else if (a === "photo") fileInput.click();
+    else if (a === "rmphoto") { const c = state.cars.find(x => x.id === state.carId); await store.removePhoto(c); await reload(); }
     else if (a === "signout") { state.sheet = null; await store.signOut(); }
     else if (a === "export") exportBackup();
     else if (b.dataset.ask) { state.confirm = b.dataset.ask; render(); }
