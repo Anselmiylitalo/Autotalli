@@ -19,7 +19,7 @@ const rowToReading = r => ({ id: r.id, carId: r.car_id, date: r.date, km: r.km }
 
 /* ---------- Supabase ---------- */
 async function supabaseStore() {
-  const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm");
+  const { createClient } = await import("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.58.0/+esm");
   const sb = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, { auth: { persistSession: true, autoRefreshToken: true } });
   const check = ({ data, error }) => { if (error) throw error; return data; };
   return {

@@ -1,6 +1,6 @@
 // Service worker: pitää sovelluksen rungon välimuistissa, jotta se aukeaa nopeasti ja ilman verkkoa.
 // Nosta versiota aina kun julkaiset muutoksia.
-const CACHE = "autotalli-v1";
+const CACHE = "autotalli-v2";
 const SHELL = ["./", "index.html", "styles.css", "app.js", "logic.js", "db.js", "config.js",
   "manifest.webmanifest", "icons/icon-192.png", "icons/icon-512.png", "icons/apple-touch-icon.png"];
 
