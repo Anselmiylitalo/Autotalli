@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="fi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Autotalli</title>
+  <meta name="description" content="Autojen perustiedot, huoltohistoria ja muistutus öljynvaihdosta.">
+  <meta name="theme-color" content="#ECEFF2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0D1318" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Autotalli">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Barlow:wght@400;500;600&family=JetBrains+Mono:wght@500;700&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="wrap">
+    <header class="top">
+      <div>
+        <div class="eyebrow">Huoltokirja</div>
+        <h1>Autotalli</h1>
+      </div>
+      <div class="top-right">
+        <span class="note" id="storeNote"></span>
+        <button class="btn-ghost small" id="menuBtn" hidden>Asetukset</button>
+      </div>
+    </header>
+    <div id="sheetHost"></div>
+    <main id="view"><div class="empty">Ladataan…</div></main>
+  </div>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
