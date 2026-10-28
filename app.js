@@ -7,14 +7,16 @@ const KM_STEPS = [5000, 7500, 10000, 15000, 20000, 30000];
 const SERVICE_TYPES = ["Öljynvaihto", "Renkaiden vaihto", "Katsastus", "Määräaikaishuolto", "Jarruhuolto", "Akun vaihto",
   "Jakohihnan vaihto", "Ilmastointihuolto", "Korjaus"];
 
-const state = { user: null, cars: [], readings: [], services: [], view: "list", carId: null, sheet: null, confirm: null, authMode: "in" };
+const state = { user: null, cars: [], readings: [], services: [], view: "list", carId: null, sheet: null, confirm: null, authMode: "in",
+  svc: { car: "all", year: "all", q: "", sort: "date", dir: "desc" } };
 let store;
 
 /* ---------- apurit ---------- */
 const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 const nbsp = s => s.replace(/[  ]/g, " ");
 const fmtKm = n => n == null || n === "" ? "" : nbsp(Math.round(Number(n)).toLocaleString("fi-FI"));
-const fmtEur = n => n == null || n === "" ? "" : nbsp(Number(n).toLocaleString("fi-FI", { maximumFractionDigits: 2 })) + " €";
+const fmtEur = n => { if (n == null || n === "") return ""; const v = Number(n), whole = Number.isInteger(v);
+  return nbsp(v.toLocaleString("fi-FI", { minimumFractionDigits: whole ? 0 : 2, maximumFractionDigits: 2 })) + " €"; };
 const num = v => { const s = String(v ?? "").replace(/\s/g, "").replace(",", "."); return s === "" || isNaN(+s) ? null : +s; };
 const carTitle = c => [c.make, c.model].filter(Boolean).join(" ") || "Nimetön auto";
 const curKm = c => currentKm(c.id, state.readings, state.services);
@@ -204,7 +206,7 @@ function renderCar() {
     <section class="panel"><div class="row between"><h3>Perustiedot</h3><button data-act="editcar">Muokkaa</button></div>
       ${facts.length ? `<dl class="facts">${facts.map(f => `<div><dt>${f[0]}</dt><dd>${esc(f[1])}</dd></div>`).join("")}</dl>` : `<p class="muted">Ei lisätietoja.</p>`}
       ${c.notes ? `<p class="desc">${esc(c.notes)}</p>` : ""}</section>
-    <section class="panel"><div class="row between"><h3>Huoltohistoria</h3><button data-act="svc">+ Lisää huolto</button></div>
+    <section class="panel"><div class="row between"><h3>Huoltohistoria</h3><div class="row">${list.length ? `<button class="btn-ghost" data-act="astable">Taulukkona</button>` : ""}<button data-act="svc">+ Lisää huolto</button></div></div>
       ${list.length ? `<ul class="entries">${list.map(e => {
         const [y, m, d] = (e.date || "").split("-");
         return `<li class="entry ${isOil(e) ? "oilrow" : ""}">
@@ -225,9 +227,129 @@ function renderCar() {
 function render() {
   $("#storeNote").textContent = store?.mode === "local" ? "Demotila: tiedot vain tässä selaimessa" : (state.user?.email || "");
   $("#menuBtn").hidden = !state.user;
+  $("#nav").hidden = !state.user;
   if (!state.user) { state.sheet = null; renderSheet(); return renderAuth(); }
+  $("#navList").setAttribute("aria-current", state.view !== "services" ? "page" : "false");
+  $("#navServices").setAttribute("aria-current", state.view === "services" ? "page" : "false");
   renderSheet();
-  state.view === "car" ? renderCar() : renderList();
+  state.view === "car" ? renderCar() : state.view === "services" ? renderServices() : renderList();
+}
+
+/* ---------- huoltotaulukko ---------- */
+const COLS = [
+  { key: "date", label: "Pvm" }, { key: "car", label: "Auto", cls: "car-col" }, { key: "type", label: "Työ" },
+  { key: "km", label: "km", num: true, wide: true }, { key: "place", label: "Tekijä", wide: true },
+  { key: "description", label: "Lisätiedot", wide: true }, { key: "cost", label: "Hinta", num: true },
+];
+const shortDate = iso => { if (!iso) return "–"; const [y, m, d] = iso.split("-"); return `${+d}.${+m}.${y}`; };
+const carLabel = c => c ? (c.plate || carTitle(c)) : "Poistettu auto";
+
+function filteredServices() {
+  const f = state.svc, carById = Object.fromEntries(state.cars.map(c => [c.id, c]));
+  const words = f.q.trim().split(/\s+/).filter(Boolean).map(norm);
+  const rows = state.services.filter(s =>
+    (f.car === "all" || s.carId === f.car) &&
+    (f.year === "all" || (s.date || "").startsWith(f.year)) &&
+    (!words.length || (() => { const c = carById[s.carId] || {};
+      const hay = norm([s.type, s.place, s.description, c.make, c.model, c.plate, s.date, shortDate(s.date)].join(" "));
+      return words.every(w => hay.includes(w)); })()));
+  const val = s => f.sort === "car" ? carLabel(carById[s.carId]).toLowerCase()
+    : f.sort === "cost" || f.sort === "km" ? (s[f.sort] ?? -Infinity) : String(s[f.sort] || "").toLowerCase();
+  const dir = f.dir === "asc" ? 1 : -1;
+  rows.sort((a, b) => { const x = val(a), y = val(b);
+    return (x < y ? -1 : x > y ? 1 : 0) * dir || (b.date || "").localeCompare(a.date || ""); });
+  return { rows, carById };
+}
+
+function renderServices() {
+  const f = state.svc;
+  if (f.car !== "all" && !state.cars.find(c => c.id === f.car)) f.car = "all";
+  const years = [...new Set(state.services.map(s => (s.date || "").slice(0, 4)).filter(Boolean))].sort().reverse();
+  if (f.year !== "all" && !years.includes(f.year)) f.year = "all";
+  $("#view").innerHTML = `<div class="stack">
+    <div class="row between"><h2>Huollot</h2>
+      <div class="row"><button data-act="csv" ${state.services.length ? "" : "disabled"}>Lataa CSV</button>
+      <button class="btn-primary" data-act="svc-any" ${state.cars.length ? "" : "disabled"}>+ Lisää huolto</button></div></div>
+    <div class="filters">
+      <label>Auto<select id="sfCar"><option value="all">Kaikki autot</option>
+        ${state.cars.map(c => `<option value="${c.id}" ${f.car === c.id ? "selected" : ""}>${esc(carTitle(c))}${c.plate ? " · " + esc(c.plate) : ""}</option>`).join("")}</select></label>
+      <label>Vuosi<select id="sfYear"><option value="all">Kaikki vuodet</option>
+        ${years.map(y => `<option ${f.year === y ? "selected" : ""}>${y}</option>`).join("")}</select></label>
+      <label class="grow">Haku<input id="sfQ" type="search" value="${esc(f.q)}" placeholder="Työ, tekijä tai lisätieto" autocomplete="off" autocorrect="off" spellcheck="false" enterkeyhint="search"></label>
+    </div>
+    <div id="svcSummary"></div>
+    <div id="svcTable"></div>
+  </div>`;
+  $("#sfCar").onchange = e => { f.car = e.target.value; renderServiceData(); };
+  $("#sfYear").onchange = e => { f.year = e.target.value; renderServiceData(); };
+  const q = $("#sfQ");
+  q.oninput = () => { f.q = q.value; renderServiceData(); };
+  q.onkeydown = e => { if (e.key === "Enter") q.blur(); };
+  renderServiceData();
+}
+
+// Päivittää vain yhteenvedon ja taulukon, jotta suodattimet pitävät fokuksen.
+function renderServiceData() {
+  const f = state.svc, { rows, carById } = filteredServices();
+  const total = rows.reduce((s, r) => s + (r.cost || 0), 0);
+  const priced = rows.filter(r => r.cost != null).length;
+  const thisYear = todayISO().slice(0, 4);
+  const yearTotal = rows.filter(r => (r.date || "").startsWith(thisYear)).reduce((s, r) => s + (r.cost || 0), 0);
+  // Kulut vuosittain (enintään 6 viimeisintä vuotta) suodatuksen mukaan
+  const byYear = {};
+  for (const r of rows) { const y = (r.date || "").slice(0, 4); if (y) byYear[y] = (byYear[y] || 0) + (r.cost || 0); }
+  const yearList = Object.entries(byYear).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 6);
+  const maxY = Math.max(1, ...yearList.map(y => y[1]));
+  $("#svcSummary").innerHTML = state.services.length ? `<section class="panel summary">
+    <div class="kpis">
+      <div><dt>Huoltoja</dt><dd class="num">${rows.length}</dd></div>
+      <div><dt>Kulut yhteensä</dt><dd class="num">${fmtEur(total) || "0 €"}</dd></div>
+      ${f.year === "all" ? `<div><dt>Kulut ${thisYear}</dt><dd class="num">${fmtEur(yearTotal) || "0 €"}</dd></div>` : ""}
+      <div><dt>Keskihinta</dt><dd class="num">${priced ? fmtEur(Math.round(total / priced)) : "–"}</dd></div>
+    </div>
+    ${yearList.length > 1 ? `<div class="years" aria-label="Kulut vuosittain">${yearList.map(([y, v]) => `
+      <div class="yrow"><span class="num">${y}</span><span class="ybar"><i style="width:${Math.max(2, v / maxY * 100)}%"></i></span><span class="num">${fmtEur(v) || "0 €"}</span></div>`).join("")}</div>` : ""}
+  </section>` : "";
+
+  if (!state.services.length) {
+    $("#svcTable").innerHTML = `<div class="empty">Ei vielä huoltoja. ${state.cars.length ? "Lisää ensimmäinen huolto napista ”+ Lisää huolto”." : "Lisää ensin auto Autot-välilehdeltä."}</div>`;
+    return;
+  }
+  if (!rows.length) {
+    $("#svcTable").innerHTML = `<div class="empty">Valinnoilla ei löytynyt huoltoja. <div class="row" style="margin-top:10px"><button class="small" data-act="svc-reset">Näytä kaikki</button></div></div>`;
+    return;
+  }
+  const arrow = k => f.sort === k ? (f.dir === "asc" ? " ↑" : " ↓") : "";
+  $("#svcTable").innerHTML = `<div class="table-wrap"><table class="svc-table">
+    <thead><tr>${COLS.map(c => `<th class="${c.num ? "r" : ""} ${c.wide ? "wide" : ""} ${c.cls || ""}" aria-sort="${f.sort === c.key ? (f.dir === "asc" ? "ascending" : "descending") : "none"}">
+      <button type="button" class="th-btn" data-sort="${c.key}">${c.label}${arrow(c.key)}</button></th>`).join("")}</tr></thead>
+    <tbody>${rows.map(r => { const c = carById[r.carId];
+      const sub = [r.km != null ? `${fmtKm(r.km)} km` : "", r.place].filter(Boolean).map(esc).join(" · ");
+      return `<tr data-row="${r.id}" tabindex="0" class="${isOil(r) ? "oilrow" : ""}">
+        <td class="num nowrap date-cell">${shortDate(r.date)}<span class="m-only"><span class="car-chip">${esc(carLabel(c))}</span></span></td>
+        <td class="car-col"><span class="car-chip">${esc(carLabel(c))}</span></td>
+        <td class="work"><span class="wtitle">${esc(r.type || "Huolto")}</span>${sub ? `<span class="m-only sub">${sub}</span>` : ""}${r.description ? `<span class="m-only sub desc-sm">${esc(r.description)}</span>` : ""}</td>
+        <td class="num r wide nowrap">${r.km != null ? fmtKm(r.km) : "–"}</td>
+        <td class="wide">${esc(r.place) || "–"}</td>
+        <td class="wide desc-cell">${esc(r.description) || ""}</td>
+        <td class="num r nowrap">${r.cost != null ? fmtEur(r.cost) : "–"}</td></tr>`; }).join("")}</tbody>
+    <tfoot><tr><td><b>Yhteensä</b></td><td class="car-col"></td><td> <span class="muted">${rows.length} huoltoa</span></td>
+      <td class="wide"></td><td class="wide"></td><td class="wide"></td><td class="num r nowrap"><b>${fmtEur(total) || "0 €"}</b></td></tr></tfoot>
+  </table></div>
+  <p class="note">Avaa huolto muokattavaksi napauttamalla riviä. Lajittele napauttamalla sarakkeen otsikkoa.</p>`;
+}
+
+function exportCsv() {
+  const { rows, carById } = filteredServices();
+  const cell = v => { const s = String(v ?? ""); return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
+  const lines = [["Päivämäärä", "Auto", "Rekisterinumero", "Työ", "Mittarilukema (km)", "Tekijä", "Lisätiedot", "Hinta (€)"].join(";")];
+  for (const r of rows) { const c = carById[r.carId] || {};
+    lines.push([shortDate(r.date), carTitle(c), c.plate, r.type, r.km ?? "", r.place, r.description,
+      r.cost != null ? String(r.cost).replace(".", ",") : ""].map(cell).join(";")); }
+  // BOM + puolipiste-erotin: aukeaa suoraan suomenkielisessä Excelissä ääkkösineen.
+  const url = URL.createObjectURL(new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" }));
+  const a = Object.assign(document.createElement("a"), { href: url, download: `huollot-${todayISO()}.csv` });
+  document.body.append(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 /* ---------- lomakkeet ---------- */
@@ -241,7 +363,7 @@ function intervalSelect(val) {
 function renderSheet() {
   const h = $("#sheetHost"), s = state.sheet;
   if (!s) { h.innerHTML = ""; return; }
-  const c = state.cars.find(x => x.id === state.carId);
+  const c = state.cars.find(x => x.id === (s.carId || state.carId));
   let body = "";
   if (s.type === "settings") {
     body = `<h2>Asetukset</h2>
@@ -278,13 +400,16 @@ function renderSheet() {
       <label>Päivämäärä<input id="fDate" type="date" value="${todayISO()}"></label></div>`;
   } else {
     const e = s.edit ? state.services.find(x => x.id === s.edit) : {}; const isOilForm = s.type === "oil";
+    const pickCar = state.view === "services";
     body = `<h2>${s.edit ? "Muokkaa merkintää" : isOilForm ? "Öljyt vaihdettu" : "Lisää huolto"}</h2><div class="grid">
+      ${pickCar ? `<label class="full">Auto<select id="fCar">${state.cars.map(x => `<option value="${x.id}" ${x.id === (e.carId || s.carId) ? "selected" : ""}>${esc(carTitle(x))}${x.plate ? " · " + esc(x.plate) : ""}</option>`).join("")}</select></label>` : ""}
       ${isOilForm ? "" : `<label class="full">Toimenpide<input id="fType" list="types" value="${esc(e.type)}" placeholder="Renkaiden vaihto"></label>
       <datalist id="types">${SERVICE_TYPES.map(t => `<option value="${t}">`).join("")}</datalist>`}
       <label>Päivämäärä<input id="fDate" type="date" value="${e.date || todayISO()}"></label>
       <label>Mittarilukema (km)<input id="fKm" class="num" inputmode="numeric" value="${e.km ?? (isOilForm ? curKm(c) ?? "" : "")}"></label>
       <label>Hinta (€)<input id="fCost" class="num" inputmode="decimal" value="${e.cost ?? ""}"></label>
-      <label>Paikka<input id="fPlace" value="${esc(e.place)}" placeholder="Korjaamo tai itse"></label>
+      <label>Tekijä<input id="fPlace" list="places" value="${esc(e.place)}" placeholder="Korjaamo tai itse"></label>
+      <datalist id="places">${[...new Set(state.services.map(x => x.place).filter(Boolean))].map(p => `<option value="${esc(p)}">`).join("")}</datalist>
       <label class="full">Lisätiedot<input id="fDesc" value="${esc(e.description)}" placeholder="${isOilForm ? esc(c?.oilSpec || "Öljy ja suodatin") : ""}"></label></div>`;
   }
   h.innerHTML = `<form class="sheet" id="sheet">${body}<p class="err" id="fErr" hidden></p>
@@ -329,7 +454,8 @@ async function submitSheet(ev) {
     } else {
       const isOilForm = s.type === "oil", prev = s.edit ? state.services.find(x => x.id === s.edit) : null;
       const type = isOilForm ? "Öljynvaihto" : val("#fType") || "Huolto";
-      const svc = { id: s.edit || undefined, carId: state.carId, isOil: isOilForm || /öljynvaihto/i.test(type), type, date: val("#fDate") || todayISO(),
+      const carId = $("#fCar")?.value || s.carId || state.carId;
+      const svc = { id: s.edit || undefined, carId, isOil: isOilForm || /öljynvaihto/i.test(type), type, date: val("#fDate") || todayISO(),
         km: num(val("#fKm")), cost: num(val("#fCost")), place: val("#fPlace"), description: val("#fDesc"), createdAt: prev?.createdAt };
       if (isOilForm && svc.km == null) return fail("Anna mittarilukema, jotta seuraava vaihto voidaan laskea.");
       await store.saveService(svc);
@@ -343,6 +469,9 @@ async function submitSheet(ev) {
 /* ---------- tapahtumat ---------- */
 document.addEventListener("click", async e => {
   const card = e.target.closest("[data-open]"), b = e.target.closest("button");
+  const row = e.target.closest("tr[data-row]");
+  if (row && !b) { const en = state.services.find(x => x.id === row.dataset.row);
+    if (en) { state.sheet = { type: en.isOil && en.type === "Öljynvaihto" ? "oil" : "svc", edit: en.id, carId: en.carId }; renderSheet(); } return; }
   if (card && !b) { state.view = "car"; state.carId = card.dataset.open; state.confirm = null; state.sheet = null; render(); scrollTo(0, 0); return; }
   if (!b) return;
   const a = b.dataset.act;
@@ -361,6 +490,15 @@ document.addEventListener("click", async e => {
     else if (a === "nodel") { state.confirm = null; render(); }
     else if (a === "askcar") { state.confirm = "car"; render(); }
     else if (a === "delcar") { const id = state.carId, pp = state.cars.find(x => x.id === id)?.photoPath; state.view = "list"; state.carId = null; state.confirm = null; await store.deleteCar(id, pp); await reload(); }
+    else if (a === "nav-list") { state.view = "list"; state.carId = null; state.sheet = null; state.confirm = null; render(); scrollTo(0, 0); }
+    else if (a === "nav-services") { state.view = "services"; state.carId = null; state.sheet = null; state.confirm = null; render(); scrollTo(0, 0); }
+    else if (a === "astable") { state.svc.car = state.carId; state.svc.year = "all"; state.svc.q = ""; state.view = "services"; state.carId = null; state.sheet = null; render(); scrollTo(0, 0); }
+    else if (a === "svc-any") { state.sheet = { type: "svc", carId: state.svc.car !== "all" ? state.svc.car : state.cars[0]?.id }; renderSheet(); }
+    else if (a === "svc-reset") { Object.assign(state.svc, { car: "all", year: "all", q: "" }); renderServices(); }
+    else if (a === "csv") exportCsv();
+    else if (b.dataset.sort) { const k = b.dataset.sort, f = state.svc;
+      if (f.sort === k) f.dir = f.dir === "asc" ? "desc" : "asc"; else { f.sort = k; f.dir = k === "date" || k === "cost" || k === "km" ? "desc" : "asc"; }
+      renderServiceData(); }
     else if (a === "clearsearch") { state.query = ""; renderList(); $("#search")?.focus(); }
     else if (a === "photo") fileInput.click();
     else if (a === "rmphoto") { const c = state.cars.find(x => x.id === state.carId); await store.removePhoto(c); await reload(); }
@@ -370,12 +508,12 @@ document.addEventListener("click", async e => {
     else if (b.dataset.del) { state.confirm = null; await store.deleteService(b.dataset.del); await reload(); }
     else if (b.dataset.edit) {
       const en = state.services.find(x => x.id === b.dataset.edit);
-      state.sheet = { type: en && en.isOil && en.type === "Öljynvaihto" ? "oil" : "svc", edit: b.dataset.edit }; renderSheet();
+      state.sheet = { type: en && en.isOil && en.type === "Öljynvaihto" ? "oil" : "svc", edit: b.dataset.edit, carId: en?.carId }; renderSheet();
     }
   } catch (err) { alert(errText(err)); }
 });
 document.addEventListener("keydown", e => {
-  const c = e.target.closest?.("[data-open]");
+  const c = e.target.closest?.("[data-open], tr[data-row]");
   if (c && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); c.click(); }
 });
 $("#menuBtn").onclick = () => { state.sheet = { type: "settings" }; renderSheet(); };

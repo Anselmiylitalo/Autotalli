@@ -58,6 +58,55 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .card-top>div{min-width:0}
 .sub{font-size:.9rem;color:var(--muted)}
 
+/* välilehdet */
+.tabs{display:flex;gap:4px;padding:4px;background:var(--surface);border:1px solid var(--line);border-radius:12px;align-self:flex-start}
+.tabs button{border:none;background:transparent;padding:7px 18px;border-radius:9px;font-family:var(--f-display);font-weight:600;font-size:1.05rem;letter-spacing:.02em;color:var(--muted)}
+.tabs button[aria-current="page"]{background:var(--ink);color:var(--surface)}
+
+/* huoltonäkymä */
+.filters{display:grid;grid-template-columns:repeat(2,minmax(0,1fr)) minmax(0,2fr);gap:10px}
+@media (max-width:640px){.filters{grid-template-columns:repeat(2,minmax(0,1fr))}.filters .grow{grid-column:1/-1}}
+.summary{gap:14px}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,130px),1fr));gap:12px 18px;margin:0}
+.kpis dt{font-family:var(--f-display);text-transform:uppercase;letter-spacing:.08em;font-size:.75rem;color:var(--muted);font-weight:600}
+.kpis dd{margin:0;font-size:1.35rem;font-weight:700}
+.years{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:12px}
+.yrow{display:grid;grid-template-columns:3.2em minmax(0,1fr) 6.5em;gap:10px;align-items:center;font-size:.9rem}
+.yrow span:last-child{text-align:right}
+.ybar{height:8px;background:var(--track);border-radius:999px;overflow:hidden}
+.ybar i{display:block;height:100%;background:var(--accent);border-radius:999px}
+
+.table-wrap{background:var(--surface);border:1px solid var(--line);border-radius:14px;overflow-x:auto;-webkit-overflow-scrolling:touch}
+.svc-table{width:100%;border-collapse:collapse;font-size:.95rem}
+.svc-table th{position:sticky;top:0;background:var(--surface);text-align:left;border-bottom:2px solid var(--ink);padding:0}
+.svc-table th.r{text-align:right}
+.th-btn{width:100%;border:none;background:transparent;border-radius:0;padding:10px 12px;text-align:inherit;font-family:var(--f-display);text-transform:uppercase;letter-spacing:.08em;font-size:.78rem;font-weight:600;color:var(--muted);white-space:nowrap}
+.th-btn:hover{color:var(--ink)}
+.svc-table td{padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+.svc-table tbody tr{cursor:pointer}
+.svc-table tbody tr:hover td{background:var(--bg)}
+.svc-table tbody tr:focus-visible{outline:3px solid var(--accent);outline-offset:-3px}
+.svc-table tr.oilrow td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.svc-table tfoot td{border-bottom:none;border-top:2px solid var(--ink);padding-top:12px}
+.svc-table .r{text-align:right}
+.nowrap{white-space:nowrap}
+.car-chip{display:inline-block;font-family:var(--f-mono);font-size:.8rem;font-weight:700;border:1.5px solid var(--ink);border-radius:4px;padding:0 5px;white-space:nowrap}
+.work{min-width:9em}
+.wtitle{font-weight:600}
+.desc-cell{color:var(--muted);max-width:28ch}
+.sub{display:block;font-size:.83rem;color:var(--muted)}
+.svc-table .m-only{display:none}
+.desc-sm{overflow-wrap:anywhere}
+/* Puhelimessa kapea taulukko: km, tekijä ja lisätiedot näytetään työn alla */
+@media (max-width:640px){
+  .svc-table .wide,.svc-table .car-col{display:none}
+  .svc-table .m-only{display:block}
+  .svc-table td,.th-btn{padding-left:8px;padding-right:8px}
+  .svc-table{font-size:.9rem}
+  .svc-table td.date-cell{font-size:.8rem;width:1%}
+  .svc-table .date-cell .car-chip{margin-top:4px;font-size:.7rem}
+}
+
 .search{position:relative;display:flex;align-items:center}
 .search input{padding:11px 92px 11px 40px;border-radius:12px;-webkit-appearance:none;appearance:none}
 .search input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
