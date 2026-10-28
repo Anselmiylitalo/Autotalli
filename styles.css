@@ -58,6 +58,12 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
 .card-top>div{min-width:0}
 .sub{font-size:.9rem;color:var(--muted)}
 
+.search{position:relative;display:flex;align-items:center}
+.search input{padding:11px 92px 11px 40px;border-radius:12px;-webkit-appearance:none;appearance:none}
+.search input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+.search-icon{position:absolute;left:12px;width:18px;height:18px;color:var(--muted);pointer-events:none}
+.search-count{position:absolute;right:48px;font-size:.82rem;color:var(--muted);pointer-events:none}
+.search-clear{position:absolute;right:6px;width:34px;height:34px;padding:0;border:none;border-radius:50%;background:var(--track);color:var(--ink);font-size:1.1rem;line-height:1;display:grid;place-items:center}
 .photo{position:relative;overflow:hidden;background:var(--track);max-width:100%}
 .photo img{display:block;width:100%;height:100%;object-fit:cover}
 .photo.placeholder{display:grid;place-items:center;color:var(--line)}

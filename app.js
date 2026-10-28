@@ -121,22 +121,63 @@ function renderAuth() {
   };
 }
 
-function renderList() {
+/* ---------- haku ---------- */
+// Vertailu ilman kirjainkokoa, välilyöntejä ja viivoja, jotta "abc123" löytää kilven "ABC-123".
+const norm = s => String(s ?? "").toLowerCase().replace(/[\s\-_.]/g, "");
+const OIL_WORDS = { ok: "kunnossa", soon: "pian", late: "myöhässä", none: "eitietoa" };
+function matches(c, q) {
+  const hay = norm([c.make, c.model, c.plate, c.year, c.fuel, c.engine, c.oilSpec, c.tires, c.vin, c.notes,
+    OIL_WORDS[oil(c)?.level] || ""].join(" "));
+  // Jokaisen hakusanan pitää löytyä: "skoda 2017" löytää vain vuoden 2017 Skodat.
+  return q.split(/\s+/).filter(Boolean).every(w => hay.includes(norm(w)));
+}
+function carCard(c) {
+  return `<article class="card" tabindex="0" role="button" data-open="${c.id}" aria-label="Avaa ${esc(carTitle(c))}">
+    ${carPhoto(c, "card-photo")}
+    <div class="card-top"><div><h3>${esc(carTitle(c))}</h3>
+      <div class="sub">${[c.year, c.fuel, c.engine].filter(Boolean).map(esc).join(" · ") || "&nbsp;"}</div></div>${plate(c.plate)}</div>
+    <div>${odo(curKm(c))}</div>
+    ${oilBlock(c, false)}
+  </article>`;
+}
+// Päivittää vain korttialueen, jotta hakukenttä pitää fokuksen ja näppäimistö pysyy auki kirjoittaessa.
+function renderCards() {
+  const host = $("#cardsHost"); if (!host) return;
   const order = { late: 0, soon: 1, none: 2, ok: 3 };
-  const cars = [...state.cars].sort((a, b) => (order[oil(a)?.level] ?? 4) - (order[oil(b)?.level] ?? 4));
+  const q = (state.query || "").trim();
+  const cars = [...state.cars].sort((a, b) => (order[oil(a)?.level] ?? 4) - (order[oil(b)?.level] ?? 4))
+    .filter(c => !q || matches(c, q));
+  $("#searchCount").textContent = q ? `${cars.length} / ${state.cars.length}` : "";
+  $("#searchClear").hidden = !state.query;
+  host.innerHTML = cars.length ? `<div class="cards">${cars.map(carCard).join("")}</div>`
+    : `<div class="empty">Haulla ”${esc(q)}” ei löytynyt autoja. Kokeile esimerkiksi merkkiä, mallia tai rekisterinumeroa.
+       <div class="row" style="margin-top:10px"><button class="small" data-act="clearsearch">Tyhjennä haku</button></div></div>`;
+}
+
+function renderList() {
+  const has = state.cars.length > 0;
   $("#view").innerHTML = `<div class="stack">
-    <div class="row between"><h2>${state.cars.length ? `Autot (${state.cars.length})` : "Ei vielä autoja"}</h2>
+    <div class="row between"><h2>${has ? `Autot (${state.cars.length})` : "Ei vielä autoja"}</h2>
       <button class="btn-primary" data-act="newcar">+ Lisää auto</button></div>
-    ${state.cars.length ? `<div class="cards">${cars.map(c => `
-      <article class="card" tabindex="0" role="button" data-open="${c.id}" aria-label="Avaa ${esc(carTitle(c))}">
-        ${carPhoto(c, "card-photo")}
-        <div class="card-top"><div><h3>${esc(carTitle(c))}</h3>
-          <div class="sub">${[c.year, c.fuel, c.engine].filter(Boolean).map(esc).join(" · ") || "&nbsp;"}</div></div>${plate(c.plate)}</div>
-        <div>${odo(curKm(c))}</div>
-        ${oilBlock(c, false)}
-      </article>`).join("")}</div>`
+    ${has ? `<div class="search">
+        <svg class="search-icon" viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m20 20-4-4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        <input id="search" type="search" placeholder="Hae merkillä, mallilla tai rekisterinumerolla" value="${esc(state.query || "")}"
+          autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" enterkeyhint="search" aria-label="Hae autoja">
+        <span class="search-count num" id="searchCount" aria-live="polite"></span>
+        <button type="button" class="search-clear" id="searchClear" data-act="clearsearch" aria-label="Tyhjennä haku" hidden>×</button>
+      </div>
+      <div id="cardsHost"></div>`
     : `<div class="empty">Lisää ensimmäinen auto: merkki, malli, rekisterinumero, mittarilukema ja öljynvaihtoväli. Jos kerrot milloin öljyt viimeksi vaihdettiin, sovellus laskee seuraavan vaihdon heti.</div>`}
   </div>`;
+  const input = $("#search");
+  if (input) {
+    input.oninput = () => { state.query = input.value; renderCards(); };
+    input.onkeydown = e => {
+      if (e.key === "Escape") { input.value = ""; state.query = ""; renderCards(); }
+      if (e.key === "Enter") input.blur(); // sulkee iPhonen näppäimistön
+    };
+  }
+  renderCards();
 }
 
 function renderCar() {
@@ -320,6 +361,7 @@ document.addEventListener("click", async e => {
     else if (a === "nodel") { state.confirm = null; render(); }
     else if (a === "askcar") { state.confirm = "car"; render(); }
     else if (a === "delcar") { const id = state.carId, pp = state.cars.find(x => x.id === id)?.photoPath; state.view = "list"; state.carId = null; state.confirm = null; await store.deleteCar(id, pp); await reload(); }
+    else if (a === "clearsearch") { state.query = ""; renderList(); $("#search")?.focus(); }
     else if (a === "photo") fileInput.click();
     else if (a === "rmphoto") { const c = state.cars.find(x => x.id === state.carId); await store.removePhoto(c); await reload(); }
     else if (a === "signout") { state.sheet = null; await store.signOut(); }
